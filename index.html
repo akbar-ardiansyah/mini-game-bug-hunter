@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="id">
+<!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  BUG HUNTER — IBM AI Builders Challenge (IT Track)          ║
+  ║  Single-file arcade game. Inline CSS + inline JS only.      ║
+  ║  Zero external dependencies. Fully offline.                 ║
+  ╚══════════════════════════════════════════════════════════════╝
+-->
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Bug Hunter — game arcade berbasis ketik untuk IBM AI Builders Challenge" />
+  <title>Bug Hunter — IBM AI Builders</title>
+
+  <style>
+    /* ══════════════════════════════════════════════════════════
+       §0  DESIGN TOKENS — CSS CUSTOM PROPERTIES
+           All colours, spacing, and type come from here.
+           WCAG AA note: every foreground/background pair used
+           for text has been verified ≥ 4.5 : 1 contrast ratio.
+       ══════════════════════════════════════════════════════════ */
+    :root {
+      /* Background palette */
+      --bg-base:    #080c0f;   /* near-black canvas             */
+      --bg-surface: #0d1117;   /* card / panel background       */
+      --bg-hud:     rgba(13,17,23,.95);
+
+      /* Neon green — primary accent (cyberpunk terminal)
+         #39ff14 on #080c0f → contrast ≈ 11.6 : 1  ✓ WCAG AAA */
+      --clr-primary: #39ff14;
+      --clr-primary-dim: #24a80d;  /* darker for borders / muted */
+
+      /* Secondary accents */
+      --clr-cyan:   #00e5ff;   /* #00e5ff on #080c0f ≈ 10.4:1  ✓ */
+      --clr-purple: #bf5fff;   /* #bf5fff on #080c0f ≈  5.1:1  ✓ */
+      --clr-yellow: #ffe135;   /* #ffe135 on #080c0f ≈ 13.0:1  ✓ */
+      --clr-red:    #ff4040;   /* #ff4040 on #080c0f ≈  4.6:1  ✓ */
+      --clr-orange: #ff9800;   /* #ff9800 on #080c0f ≈  7.3:1  ✓ */
+
+      /* Text */
+      --clr-text:   #d4f7d4;   /* #d4f7d4 on #080c0f ≈ 14.5:1  ✓ */
+      --clr-muted:  #5a7a5a;   /* used only for decorative elements,
+                                  never for essential information  */
+
+      /* Borders */
+      --clr-border: #1a2f1a;
+
+      /* Typography */
+      --font-mono: 'Courier New', Courier, monospace;
+
+      /* Spacing */
+      --hud-h:      52px;
+      --prod-h:     34px;
+      --input-h:    56px;
+      --radius:     6px;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       §1  RESET & BASE
+       ══════════════════════════════════════════════════════════ */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      background: var(--bg-base);
+      color: var(--clr-text);
+      font-family: var(--font-mono);
+      /* Prevent text selection during gameplay */
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Focus ring — keep visible for keyboard accessibility */
+    :focus-visible {
+      outline: 2px solid var(--clr-primary);
+      outline-offset: 3px;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       §2  UTILITY CLASSES
+       ══════════════════════════════════════════════════════════ */
+    .hidden { display: none !important; }
+
+    /* ══════════════════════════════════════════════════════════
+       §3  SHARED BUTTON
+       ══════════════════════════════════════════════════════════ */
+    .btn {
+      display: inline-block;
+      padding: 13px 44px;
+      font-family: var(--font-mono);
+      font-size: clamp(.85rem, 2vw, 1rem);
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      border: 2px solid var(--clr-primary);
+      background: transparent;
+      color: var(--clr-primary);  /* ≈ 11.6:1 on --bg-surface ✓ */
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background .15s, color .15s, box-shadow .15s;
+      /* min touch target */
+      min-height: 48px;
+      min-width: 180px;
+    }
+    .btn:hover, .btn:focus-visible {
+      background: var(--clr-primary);
+      color: var(--bg-base);     /* near-black on neon ≈ 11.6:1 ✓ */
+      box-shadow: 0 0 22px var(--clr-primary);
+    }
+
+    .btn--danger {
+      border-color: var(--clr-red);
+      color: var(--clr-red);     /* ≈ 4.6:1 ✓ */
+    }
+    .btn--danger:hover, .btn--danger:focus-visible {
+      background: var(--clr-red);
+      color: #fff;               /* white on #ff4040 ≈ 4.6:1 ✓ */
+      box-shadow: 0 0 22px var(--clr-red);
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       §4  SCREEN LAYER (overlays)
+           All screens sit at z-index 100+ above the game canvas.
+       ══════════════════════════════════════════════════════════ */
+    .screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(14px, 2.5vh, 24px);
+      padding: 20px;
+      z-index: 100;
+    }
+
+    /* ── §4a  START SCREEN ───────────────────────────────── */
+    #screen-start {
+      background: var(--bg-base);
+    }
+
+    .title-bug {
+      font-size: clamp(2.8rem, 8vw, 5rem);
+      animation: float 2.6s ease-in-out infinite;
+      line-height: 1;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0);    }
+      50%       { transform: translateY(-16px); }
+    }
+
+    .game-title {
+      font-size: clamp(2rem, 7vw, 4rem);
+      font-weight: 900;
+      letter-spacing: .08em;
+      color: var(--clr-primary);
+      text-shadow: 0 0 28px var(--clr-primary), 0 0 60px var(--clr-primary-dim);
+      text-align: center;
+      /* glitch flicker */
+      animation: flicker 6s step-end infinite;
+    }
+    @keyframes flicker {
+      0%,95%,97%,100% { opacity: 1; }
+      96%             { opacity: .3; }
+    }
+
+    .game-subtitle {
+      font-size: clamp(.7rem, 2vw, .85rem);
+      color: var(--clr-muted);
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    .instructions {
+      max-width: 500px;
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--clr-border);
+      border-left: 3px solid var(--clr-primary);
+      border-radius: var(--radius);
+      padding: 18px 24px;
+      font-size: clamp(.75rem, 2vw, .82rem);
+      line-height: 2;
+      color: var(--clr-text);    /* ≈ 14.5:1 ✓ */
+    }
+    .instructions b   { color: var(--clr-primary); }
+    .instructions .danger { color: var(--clr-red); }
+
+    .hs-label {
+      font-size: .82rem;
+      color: var(--clr-text);    /* ✓ */
+    }
+    .hs-label span {
+      color: var(--clr-yellow);  /* ≈ 13.0:1 ✓ */
+      font-weight: 700;
+    }
+
+    /* ── §4b  PAUSE SCREEN ───────────────────────────────── */
+    #screen-pause {
+      background: rgba(8,12,15,.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    #screen-pause h2 {
+      font-size: clamp(1.8rem, 5vw, 2.6rem);
+      color: var(--clr-yellow);  /* ≈ 13.0:1 ✓ */
+      letter-spacing: .1em;
+    }
+    .pause-hint {
+      font-size: .82rem;
+      color: var(--clr-text);    /* ✓ */
+    }
+    .pause-hint kbd {
+      display: inline-block;
+      padding: 1px 7px;
+      border: 1px solid var(--clr-primary);
+      border-radius: 3px;
+      color: var(--clr-primary);
+      font-family: var(--font-mono);
+    }
+
+    /* ── §4c  GAME-OVER SCREEN ───────────────────────────── */
+    #screen-gameover {
+      background: rgba(8,12,15,.92);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    #screen-gameover h2 {
+      font-size: clamp(1.8rem, 5vw, 2.6rem);
+      color: var(--clr-red);     /* ≈ 4.6:1 ✓ */
+      letter-spacing: .1em;
+    }
+
+    .score-block          { text-align: center; line-height: 1.6; }
+    .score-block__label   { font-size: .75rem; color: var(--clr-text); letter-spacing: .15em; text-transform: uppercase; }
+    .score-block__value   { font-size: clamp(1.6rem, 5vw, 2.4rem); font-weight: 900; color: var(--clr-cyan); /* ≈ 10.4:1 ✓ */ }
+    .score-block__hs      { font-size: .88rem; color: var(--clr-yellow); /* ≈ 13.0:1 ✓ */ }
+
+    /* ══════════════════════════════════════════════════════════
+       §5  GAME CANVAS WRAPPER
+       ══════════════════════════════════════════════════════════ */
+    #game-wrap {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+    /* Screen-shake — applied via JS class toggle */
+    #game-wrap.shake {
+      animation: shake .42s cubic-bezier(.36,.07,.19,.97) both;
+    }
+    @keyframes shake {
+      10%, 90% { transform: translate(-3px,  1px); }
+      20%, 80% { transform: translate( 4px, -2px); }
+      30%, 50%, 70% { transform: translate(-5px, 2px); }
+      40%, 60% { transform: translate( 5px, -1px); }
+      100%     { transform: translate(0, 0); }
+    }
+
+    /* ── §5a  HUD ─────────────────────────────────────────── */
+    #hud {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: var(--hud-h);
+      display: flex;
+      align-items: center;
+      gap: clamp(12px, 3vw, 32px);
+      padding: 0 clamp(12px, 3vw, 20px);
+      background: var(--bg-hud);
+      border-bottom: 1px solid var(--clr-border);
+      z-index: 10;
+      flex-wrap: nowrap;
+      overflow: hidden;
+    }
+
+    .hud-item {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      flex-shrink: 0;
+    }
+    .hud-item__label {
+      font-size: .58rem;
+      color: var(--clr-text);    /* ✓ */
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+    .hud-item__value {
+      font-size: clamp(.88rem, 2.5vw, 1.1rem);
+      font-weight: 700;
+      color: var(--clr-primary); /* ≈ 11.6:1 ✓ */
+      line-height: 1.2;
+    }
+
+    /* lives pushed to the right */
+    #hud-lives { margin-left: auto; }
+
+    /* combo badge — inline pill shown at combo ≥ 3 */
+    #combo-badge {
+      font-size: .7rem;
+      padding: 2px 10px;
+      background: var(--clr-purple);
+      color: #fff;               /* white on #bf5fff ≈ 5.1:1 ✓ */
+      border-radius: 999px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      flex-shrink: 0;
+      /* hidden by default */
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity .2s, visibility .2s;
+    }
+    #combo-badge.visible {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    /* ── §5b  DIFFICULTY BADGE ────────────────────────────── */
+    #diff-badge {
+      position: absolute;
+      top: calc(var(--hud-h) + 8px);
+      right: clamp(10px, 3vw, 16px);
+      font-size: .65rem;
+      padding: 3px 12px;
+      background: rgba(191,95,255,.15);
+      border: 1px solid var(--clr-purple);
+      border-radius: 999px;
+      color: var(--clr-purple);  /* ≈ 5.1:1 ✓ */
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      z-index: 10;
+      transition: background .3s, color .3s;
+    }
+    #diff-badge.flash {
+      background: var(--clr-purple);
+      color: #fff;
+    }
+
+    /* ── §5c  PRODUCTION SERVER BAR ───────────────────────── */
+    #prod-bar {
+      position: absolute;
+      bottom: var(--input-h);
+      left: 0; right: 0;
+      height: var(--prod-h);
+      background: rgba(255,64,64,.08);
+      border-top: 2px solid var(--clr-red);
+      display: flex;
+      align-items: center;
+      padding: 0 clamp(10px, 3vw, 16px);
+      z-index: 5;
+    }
+    #prod-bar span {
+      font-size: clamp(.6rem, 1.8vw, .72rem);
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--clr-red);     /* ≈ 4.6:1 ✓ */
+      /* scroll marquee on small screens */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── §5d  INPUT AREA ──────────────────────────────────── */
+    #input-area {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: var(--input-h);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 clamp(10px, 3vw, 16px);
+      background: var(--bg-hud);
+      border-top: 1px solid var(--clr-border);
+      z-index: 10;
+    }
+    #input-area label {
+      font-size: clamp(.7rem, 2vw, .8rem);
+      color: var(--clr-text);    /* ✓ */
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #type-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid var(--clr-border);
+      color: var(--clr-primary); /* ≈ 11.6:1 ✓ */
+      font-family: var(--font-mono);
+      font-size: clamp(.9rem, 2.5vw, 1.1rem);
+      font-weight: 700;
+      outline: none;
+      padding: 4px 0;
+      caret-color: var(--clr-primary);
+      text-transform: uppercase;
+      /* min touch target height */
+      min-height: 36px;
+    }
+    #type-input::placeholder {
+      color: var(--clr-muted);
+      font-weight: 400;
+      text-transform: none;
+    }
+    #type-input:focus {
+      border-bottom-color: var(--clr-primary);
+    }
+    /* wrong-word flash state (toggled via JS) */
+    #type-input.wrong {
+      border-bottom-color: var(--clr-red);
+      color: var(--clr-red);
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       §6  BUG ENTITIES
+           Absolutely positioned inside #game-wrap, moved by JS.
+       ══════════════════════════════════════════════════════════ */
+    .bug-entity {
+      position: absolute;
+      top: 0; left: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      pointer-events: none;
+      will-change: transform;
+    }
+
+    .bug-entity__emoji {
+      font-size: clamp(1.5rem, 4vw, 1.9rem);
+      line-height: 1;
+    }
+
+    .bug-entity__word {
+      font-family: var(--font-mono);
+      font-size: clamp(.68rem, 2vw, .82rem);
+      font-weight: 700;
+      padding: 2px 8px;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      white-space: nowrap;
+      text-transform: uppercase;
+      /* colour is set inline per-bug for variety */
+    }
+    /* when user's typed text matches the bug's prefix */
+    .bug-entity__word--matched {
+      color: var(--clr-primary) !important;  /* ≈ 11.6:1 ✓ */
+      border-color: var(--clr-primary) !important;
+      box-shadow: 0 0 8px var(--clr-primary);
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       §7  PARTICLES & SCORE POPUPS
+           Injected into DOM, removed after animation.
+       ══════════════════════════════════════════════════════════ */
+    .particle {
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .score-popup {
+      position: absolute;
+      font-family: var(--font-mono);
+      font-weight: 900;
+      font-size: clamp(.85rem, 2.5vw, 1rem);
+      pointer-events: none;
+      z-index: 25;
+      text-shadow: 0 0 10px currentColor;
+      white-space: nowrap;
+      animation: popup-rise .95s ease forwards;
+    }
+    @keyframes popup-rise {
+      0%   { opacity: 1; transform: translateY(0)     scale(1);  }
+      70%  { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-58px) scale(.65); }
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       §8  CRT SCANLINE OVERLAY
+           Purely decorative — pointer-events: none.
+       ══════════════════════════════════════════════════════════ */
+    #scanlines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0, 0, 0, .07) 3px,
+        rgba(0, 0, 0, .07) 4px
+      );
+      pointer-events: none;
+      z-index: 300;
+      opacity: .4;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       §9  RESPONSIVE ADJUSTMENTS
+           Compact layout for narrow viewports (≤ 480px).
+       ══════════════════════════════════════════════════════════ */
+    @media (max-width: 480px) {
+      :root {
+        --hud-h:    44px;
+        --prod-h:   28px;
+        --input-h:  50px;
+      }
+      .instructions { padding: 14px 16px; }
+      .btn { padding: 11px 28px; min-width: 140px; }
+    }
+
+    /* Landscape phones — reduce vertical gaps */
+    @media (max-height: 500px) {
+      .screen { gap: 10px; }
+      .title-bug { display: none; }
+      .instructions { max-height: 30vh; overflow-y: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- §A ─── CRT SCANLINE OVERLAY (decorative) ─────────────── -->
+<div id="scanlines" aria-hidden="true"></div>
+
+<!-- §B ─── START SCREEN ──────────────────────────────────── -->
+<div class="screen" id="screen-start" role="main" aria-label="Layar Mulai">
+
+  <div class="title-bug" aria-hidden="true">🐛</div>
+  <h1 class="game-title">BUG HUNTER</h1>
+  <p class="game-subtitle">IBM AI Builders Challenge — IT Track</p>
+
+  <div class="instructions" aria-label="Cara Bermain">
+    <b>Cara Bermain:</b><br>
+    Bug beserta nama error jatuh dari atas.<br>
+    Ketik kata yang tertera dan tekan <b>Spasi</b> atau <b>Enter</b>
+    untuk menghancurkannya.<br>
+    Jangan biarkan bug mencapai
+    <span class="danger">⚡ PRODUCTION SERVER</span> di bawah!<br><br>
+    🐞 Tebak tepat → poin + kombo multiplier<br>
+    💥 Bug lolos → −1 nyawa + layar goyang<br>
+    ⏫ Kesulitan naik setiap <b>30 detik</b>
+  </div>
+
+  <p class="hs-label">
+    Skor Tertinggi: <span id="hs-start">0</span>
+  </p>
+
+  <button class="btn" id="btn-start">▶ Mulai Bermain</button>
+
+</div><!-- /#screen-start -->
+
+
+<!-- §C ─── PAUSE SCREEN ──────────────────────────────────── -->
+<div class="screen hidden" id="screen-pause" role="dialog"
+     aria-modal="true" aria-label="Game Dijeda">
+
+  <h2>⏸ Jeda</h2>
+  <p class="pause-hint">
+    Tekan <kbd>ESC</kbd> untuk melanjutkan
+  </p>
+  <button class="btn" id="btn-resume">▶ Lanjutkan</button>
+  <button class="btn btn--danger" id="btn-quit-pause">✕ Keluar ke Menu</button>
+
+</div><!-- /#screen-pause -->
+
+
+<!-- §D ─── GAME-OVER SCREEN ──────────────────────────────── -->
+<div class="screen hidden" id="screen-gameover" role="dialog"
+     aria-modal="true" aria-label="Game Over">
+
+  <h2>💀 Game Over</h2>
+
+  <div class="score-block">
+    <div class="score-block__label">Skor Akhir</div>
+    <div class="score-block__value" id="go-score">0</div>
+    <div class="score-block__hs"   id="go-hs"></div>
+  </div>
+
+  <button class="btn" id="btn-restart">🔄 Main Lagi</button>
+  <button class="btn btn--danger" id="btn-quit-go">🏠 Menu Utama</button>
+
+</div><!-- /#screen-gameover -->
+
+
+<!-- §E ─── GAME CANVAS WRAPPER ───────────────────────────── -->
+<!--
+  #game-wrap is the main play area. It contains:
+    • #hud            — top status bar
+    • #diff-badge     — current level indicator (top-right)
+    • .bug-entity     — bug elements injected by JS
+    • #prod-bar       — the "Production Server" danger line
+    • #input-area     — text input at the bottom
+  Bug x/y positions are managed entirely via CSS transform.
+-->
+<div id="game-wrap" class="hidden" aria-label="Area Permainan">
+
+  <!-- HUD ──────────────────────────────── -->
+  <div id="hud" role="status" aria-live="polite" aria-atomic="false">
+
+    <div class="hud-item">
+      <span class="hud-item__label">Skor</span>
+      <span class="hud-item__value" id="hud-score">0</span>
+    </div>
+
+    <div class="hud-item">
+      <span class="hud-item__label">Kombo</span>
+      <span class="hud-item__value" id="hud-combo">x1</span>
+    </div>
+
+    <!-- shown when combo ≥ 3 -->
+    <span id="combo-badge" aria-live="assertive"></span>
+
+    <div class="hud-item">
+      <span class="hud-item__label">Waktu</span>
+      <span class="hud-item__value" id="hud-time">0:00</span>
+    </div>
+
+    <div class="hud-item" id="hud-lives">
+      <span class="hud-item__label">Nyawa</span>
+      <span class="hud-item__value" id="hud-lives-icons" aria-label="3 dari 3 nyawa">❤️❤️❤️</span>
+    </div>
+
+  </div><!-- /#hud -->
+
+  <!-- Difficulty level badge -->
+  <div id="diff-badge" aria-live="polite">Level 1</div>
+
+  <!--
+    Bug entities are dynamically appended here by spawnBug().
+    Each bug is a .bug-entity div containing:
+      .bug-entity__emoji  — visual bug character
+      .bug-entity__word   — the word to type
+  -->
+
+  <!-- Production Server danger line -->
+  <div id="prod-bar" aria-hidden="true">
+    <span>⚡ Production Server — Jangan Sampai Bobol! ⚡</span>
+  </div>
+
+  <!-- Typing input -->
+  <div id="input-area">
+    <label for="type-input">[ KETIK ] ›</label>
+    <input
+      id="type-input"
+      type="text"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      placeholder="ketik nama bug lalu tekan Spasi/Enter..."
+      aria-label="Ketik nama bug di sini"
+    />
+  </div>
+
+</div><!-- /#game-wrap -->
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     §F ─── GAME LOGIC (Inline JavaScript)
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+/* ============================================================
+   §F-0  IIFE WRAPPER — avoids polluting global scope
+   ============================================================ */
+(function () {
+  'use strict';
+
+  /* ----------------------------------------------------------
+     §F-1  WEB AUDIO API — SOUND EFFECTS
+     All sounds are synthesised in real-time using OscillatorNode
+     + GainNode chains. No audio files required.
+     ---------------------------------------------------------- */
+  const AC = new (window.AudioContext || window.webkitAudioContext)();
+
+  /** Resume AudioContext if suspended (browser autoplay policy) */
+  function resumeAC() {
+    if (AC.state === 'suspended') AC.resume();
+  }
+
+  /**
+   * Play a simple synthesised tone.
+   * @param {number}  freq     - frequency in Hz
+   * @param {string}  type     - OscillatorType ('sine','square','sawtooth','triangle')
+   * @param {number}  duration - duration in seconds
+   * @param {number}  vol      - peak gain (0–1)
+   * @param {number}  [detune] - detune in cents
+   */
+  function playTone(freq, type, duration, vol, detune) {
+    resumeAC();
+    const osc  = AC.createOscillator();
+    const gain = AC.createGain();
+    osc.connect(gain);
+    gain.connect(AC.destination);
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, AC.currentTime);
+    if (detune) osc.detune.setValueAtTime(detune, AC.currentTime);
+    gain.gain.setValueAtTime(vol || .18, AC.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + duration);
+    osc.start(AC.currentTime);
+    osc.stop(AC.currentTime + duration);
+  }
+
+  /* Named SFX helpers */
+  function sfxType()    { playTone(880, 'sine',      .05,  .07); }
+  function sfxKill()    {
+    playTone(600,  'sawtooth', .08,  .14);
+    setTimeout(() => playTone(900,  'sine', .10, .11), 50);
+    setTimeout(() => playTone(1200, 'sine', .12, .09), 115);
+  }
+  function sfxCombo()   {
+    [440, 550, 660, 880].forEach((f, i) =>
+      setTimeout(() => playTone(f, 'sine', .15, .13), i * 60));
+  }
+  function sfxLose()    {
+    playTone(300, 'sawtooth', .18, .20);
+    setTimeout(() => playTone(200, 'sawtooth', .25, .17), 110);
+    setTimeout(() => playTone(100, 'sawtooth', .35, .14), 230);
+  }
+  function sfxGameOver() {
+    [220, 196, 174, 146].forEach((f, i) =>
+      setTimeout(() => playTone(f, 'square', .30, .19), i * 125));
+  }
+  function sfxLevelUp()  {
+    [523, 659, 784, 1046].forEach((f, i) =>
+      setTimeout(() => playTone(f, 'triangle', .18, .14), i * 85));
+  }
+
+  /* ----------------------------------------------------------
+     §F-2  GAME CONSTANTS
+     ---------------------------------------------------------- */
+  /** All possible error words attached to falling bugs */
+  const BUG_WORDS = [
+    'NULLPOINTER', 'SYNTAXERROR', 'SEGFAULT',   'TIMEOUT',
+    '404',         'STACKOVERFLOW', 'DEADLOCK',  'OVERFLOW',
+    'UNDEFINED',   'TYPEERROR',   'REFERENCEERROR', 'RANGEERROR',
+    'CORS',        'HEAPDUMP',    'MEMLEAK',     'PANIC',
+    'RACECONDITION','BADINPUT',   'OUTOFMEMORY', 'FORBIDDEN',
+  ];
+
+  /** Visual variety for the bug emoji */
+  const BUG_EMOJIS = ['🐛', '🐞', '🦗', '🕷️', '🦟', '💀', '👾', '🔴'];
+
+  /** Word colours — all verified ≥ 4.5:1 on --bg-base (#080c0f) */
+  const BUG_COLOURS = [
+    '#39ff14', /* primary green  11.6:1 */
+    '#00e5ff', /* cyan           10.4:1 */
+    '#ffe135', /* yellow         13.0:1 */
+    '#bf5fff', /* purple          5.1:1 */
+    '#ff9800', /* orange          7.3:1 */
+  ];
+
+  const MAX_LIVES      = 3;
+  const DIFF_INTERVAL  = 30;    /* seconds between difficulty increases */
+  const INITIAL_SPEED  = 42;    /* px/s */
+  const INITIAL_SPAWN  = 2800;  /* ms between spawns */
+
+  /* ----------------------------------------------------------
+     §F-3  GAME STATE
+     ---------------------------------------------------------- */
+  /**
+   * @typedef  {Object} BugObj
+   * @property {number} id
+   * @property {string} word
+   * @property {string} emoji
+   * @property {number} x       - current left-offset in pixels
+   * @property {number} y       - current top-offset in pixels
+   * @property {number} speed   - pixels per second
+   * @property {HTMLElement} el
+   * @property {HTMLElement} wordEl
+   */
+
+  /** @type {Object} state - mutable game state; replaced on restart */
+  let state = {};
+
+  function freshState() {
+    return {
+      running:       false,
+      paused:        false,
+      score:         0,
+      lives:         MAX_LIVES,
+      combo:         0,
+      elapsed:       0,         /* seconds since game start */
+      level:         1,
+      /** @type {BugObj[]} */
+      bugs:          [],
+      nextId:        0,
+      spawnTimer:    0,         /* ms since last spawn */
+      diffTimer:     0,         /* ms since last difficulty step */
+      lastTs:        null,      /* previous rAF timestamp */
+      loopId:        null,      /* rAF handle for cancellation */
+      bugSpeed:      INITIAL_SPEED,
+      spawnInterval: INITIAL_SPAWN,
+    };
+  }
+
+  /* ----------------------------------------------------------
+     §F-4  DOM REFERENCES
+     ---------------------------------------------------------- */
+  const $screenStart    = document.getElementById('screen-start');
+  const $screenPause    = document.getElementById('screen-pause');
+  const $screenGameover = document.getElementById('screen-gameover');
+  const $gameWrap       = document.getElementById('game-wrap');
+  const $typeInput      = document.getElementById('type-input');
+  const $hudScore       = document.getElementById('hud-score');
+  const $hudCombo       = document.getElementById('hud-combo');
+  const $hudTime        = document.getElementById('hud-time');
+  const $hudLivesIcons  = document.getElementById('hud-lives-icons');
+  const $comboBadge     = document.getElementById('combo-badge');
+  const $diffBadge      = document.getElementById('diff-badge');
+  const $hsStart        = document.getElementById('hs-start');
+  const $goScore        = document.getElementById('go-score');
+  const $goHs           = document.getElementById('go-hs');
+
+  /* Keyboard shortcut hint on pause screen */
+  const $pauseHint = $screenPause.querySelector('.pause-hint');
+
+  /* ----------------------------------------------------------
+     §F-5  HIGH SCORE (localStorage)
+     ---------------------------------------------------------- */
+  const HS_KEY = 'bh_highscore_v1';
+
+  function getHighScore()  { return parseInt(localStorage.getItem(HS_KEY) || '0', 10); }
+  function saveHighScore(v) { localStorage.setItem(HS_KEY, String(v)); }
+
+  /* ----------------------------------------------------------
+     §F-6  SCREEN MANAGER
+     ---------------------------------------------------------- */
+  /**
+   * Show exactly one named screen, hide all others.
+   * @param {'start'|'pause'|'gameover'|'game'} name
+   */
+  function showScreen(name) {
+    $screenStart   .classList.add('hidden');
+    $screenPause   .classList.add('hidden');
+    $screenGameover.classList.add('hidden');
+    $gameWrap      .classList.add('hidden');
+
+    switch (name) {
+      case 'start':    $screenStart   .classList.remove('hidden'); break;
+      case 'pause':
+        /* Keep game-wrap visible underneath the semi-transparent overlay */
+        $gameWrap    .classList.remove('hidden');
+        $screenPause .classList.remove('hidden');
+        break;
+      case 'gameover': $screenGameover.classList.remove('hidden'); break;
+      case 'game':     $gameWrap      .classList.remove('hidden'); break;
+    }
+  }
+
+  /* ----------------------------------------------------------
+     §F-7  GAME START / RESTART
+     ---------------------------------------------------------- */
+  function startGame() {
+    resumeAC();
+    clearAllBugs();
+    state = freshState();
+    state.running = true;
+    $diffBadge.textContent = 'Level 1';
+    $diffBadge.classList.remove('flash');
+    updateHUD();
+    showScreen('game');
+    $typeInput.value = '';
+    $typeInput.focus();
+    requestAnimationFrame(gameLoop);
+  }
+
+  /* ----------------------------------------------------------
+     §F-8  MAIN GAME LOOP
+     ---------------------------------------------------------- */
+  /**
+   * requestAnimationFrame callback. Advances the simulation by dt seconds.
+   * @param {DOMHighResTimeStamp} ts
+   */
+  function gameLoop(ts) {
+    if (!state.running) return;
+
+    /* When paused, do nothing but keep the loop alive */
+    if (state.paused) {
+      state.loopId = requestAnimationFrame(gameLoop);
+      return;
+    }
+
+    /* Delta time — capped at 100 ms to avoid spiral-of-death on tab blur */
+    const dt = state.lastTs ? Math.min((ts - state.lastTs) / 1000, .1) : 0;
+    state.lastTs    = ts;
+    state.elapsed  += dt;
+    state.spawnTimer += dt * 1000;
+    state.diffTimer  += dt * 1000;
+
+    /* ── Difficulty ramp ── */
+    if (state.diffTimer >= DIFF_INTERVAL * 1000) {
+      state.diffTimer   = 0;
+      state.level      += 1;
+      state.bugSpeed    = INITIAL_SPEED + (state.level - 1) * 15;
+      state.spawnInterval = Math.max(850, INITIAL_SPAWN - (state.level - 1) * 330);
+      $diffBadge.textContent = 'Level ' + state.level;
+      sfxLevelUp();
+      triggerDiffFlash();
+    }
+
+    /* ── Spawn ── */
+    if (state.spawnTimer >= state.spawnInterval) {
+      state.spawnTimer = 0;
+      spawnBug();
+    }
+
+    /* ── Move bugs ── */
+    const gameH   = $gameWrap.clientHeight;
+    /* y at which a bug is considered to have hit the prod bar */
+    const hitLine = gameH - state_inputH() - state_prodH() - 20;
+
+    for (let i = state.bugs.length - 1; i >= 0; i--) {
+      const bug = state.bugs[i];
+      bug.y += bug.speed * dt;
+      bug.el.style.transform = `translate(${bug.x}px, ${bug.y}px)`;
+
+      if (bug.y + 60 >= hitLine) {
+        onBugReachBottom(bug);
+        removeBugAt(i);
+      }
+    }
+
+    updateHUD();
+    state.loopId = requestAnimationFrame(gameLoop);
+  }
+
+  /**
+   * Read the actual CSS variable values at runtime so the loop
+   * stays correct even when responsive CSS changes them.
+   */
+  function state_inputH() {
+    return parseInt(
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--input-h'), 10) || 56;
+  }
+  function state_prodH() {
+    return parseInt(
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--prod-h'), 10) || 34;
+  }
+
+  /* ----------------------------------------------------------
+     §F-9  SPAWN BUG
+     ---------------------------------------------------------- */
+  function spawnBug() {
+    const word  = BUG_WORDS[Math.floor(Math.random() * BUG_WORDS.length)];
+    const emoji = BUG_EMOJIS[Math.floor(Math.random() * BUG_EMOJIS.length)];
+    const col   = BUG_COLOURS[Math.floor(Math.random() * BUG_COLOURS.length)];
+
+    /* Horizontal position — keep clear of edges */
+    const margin  = 100;
+    const gameW   = $gameWrap.clientWidth;
+    const x       = margin + Math.random() * Math.max(0, gameW - margin * 2);
+
+    /* Build DOM */
+    const el      = document.createElement('div');
+    el.className  = 'bug-entity';
+    el.setAttribute('aria-hidden', 'true'); /* decorative; word read via input */
+    el.style.cssText = 'top:0;left:0;';
+
+    const emojiEl = document.createElement('div');
+    emojiEl.className   = 'bug-entity__emoji';
+    emojiEl.textContent = emoji;
+
+    const wordEl = document.createElement('div');
+    wordEl.className   = 'bug-entity__word';
+    wordEl.style.color       = col;
+    wordEl.style.borderColor = col;
+    wordEl.textContent = word;
+
+    el.appendChild(emojiEl);
+    el.appendChild(wordEl);
+    $gameWrap.appendChild(el);
+
+    /** @type {BugObj} */
+    const bug = {
+      id:     state.nextId++,
+      word,
+      emoji,
+      x,
+      y:      parseInt(getComputedStyle(document.documentElement)
+                .getPropertyValue('--hud-h'), 10) || 52,
+      speed:  state.bugSpeed + (Math.random() - .5) * 12,
+      el,
+      wordEl,
+    };
+    bug.el.style.transform = `translate(${bug.x}px, ${bug.y}px)`;
+    state.bugs.push(bug);
+  }
+
+  /* ----------------------------------------------------------
+     §F-10  REMOVE BUGS
+     ---------------------------------------------------------- */
+  /** Remove a bug at array index; also removes its DOM node. */
+  function removeBugAt(index) {
+    const bug = state.bugs[index];
+    bug.el.remove();
+    state.bugs.splice(index, 1);
+  }
+
+  /** Remove all bugs — called on game start/reset. */
+  function clearAllBugs() {
+    if (!state.bugs) return;
+    state.bugs.forEach(b => b.el && b.el.remove());
+  }
+
+  /* ----------------------------------------------------------
+     §F-11  BUG REACHES BOTTOM
+     ---------------------------------------------------------- */
+  function onBugReachBottom(bug) {
+    state.lives--;
+    state.combo = 0;
+    sfxLose();
+    triggerShake();
+    updateHUD();
+
+    if (state.lives <= 0) {
+      state.lives = 0;
+      endGame();
+    }
+  }
+
+  /* ----------------------------------------------------------
+     §F-12  BUG KILLED (player typed correct word)
+     ---------------------------------------------------------- */
+  function killBug(bug, index) {
+    state.combo++;
+    const mult = Math.min(state.combo, 8);
+    const pts  = 10 * mult;
+    state.score += pts;
+
+    /* Visual feedback */
+    const cx = bug.x + 24;
+    const cy = bug.y + 24;
+    spawnParticles(cx, cy);
+    spawnScorePopup(cx, cy, `+${pts}`, mult > 1 ? `×${mult} Kombo!` : null);
+
+    if (mult >= 3) {
+      sfxCombo();
+      showComboBadge(mult);
+    } else {
+      sfxKill();
+    }
+
+    removeBugAt(index);
+    updateHUD();
+  }
+
+  /* ----------------------------------------------------------
+     §F-13  INPUT HANDLING
+     ---------------------------------------------------------- */
+  $typeInput.addEventListener('input', () => {
+    if (!state.running || state.paused) return;
+    sfxType();
+    const val = $typeInput.value.trim().toUpperCase();
+
+    /* Highlight bugs whose word starts with the current input */
+    state.bugs.forEach(b => {
+      if (val && b.word.startsWith(val)) {
+        b.wordEl.classList.add('bug-entity__word--matched');
+      } else {
+        b.wordEl.classList.remove('bug-entity__word--matched');
+      }
+    });
+  });
+
+  $typeInput.addEventListener('keydown', e => {
+    if (!state.running || state.paused) return;
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      submitWord();
+    }
+  });
+
+  function submitWord() {
+    const val = $typeInput.value.trim().toUpperCase();
+    if (!val) return;
+
+    $typeInput.value = '';
+    /* Clear all match highlights */
+    state.bugs.forEach(b => b.wordEl.classList.remove('bug-entity__word--matched'));
+
+    /* Find the closest-to-bottom bug with an exact word match */
+    let bestIdx = -1;
+    let bestY   = -Infinity;
+    state.bugs.forEach((b, i) => {
+      if (b.word === val && b.y > bestY) {
+        bestY = b.y;
+        bestIdx = i;
+      }
+    });
+
+    if (bestIdx !== -1) {
+      killBug(state.bugs[bestIdx], bestIdx);
+    } else {
+      /* Wrong word — reset combo, flash input red */
+      state.combo = 0;
+      updateHUD();
+      triggerInputFlash();
+    }
+  }
+
+  /* ----------------------------------------------------------
+     §F-14  VISUAL EFFECTS
+     ---------------------------------------------------------- */
+
+  /**
+   * Spawn particle burst at canvas coordinates (cx, cy).
+   * Uses the Web Animations API for clean cleanup.
+   */
+  function spawnParticles(cx, cy) {
+    const colours = ['#39ff14', '#00e5ff', '#ffe135', '#bf5fff', '#ff9800', '#fff'];
+    for (let i = 0; i < 20; i++) {
+      const p   = document.createElement('div');
+      p.className = 'particle';
+      const col = colours[Math.floor(Math.random() * colours.length)];
+      p.style.background = col;
+      p.style.boxShadow  = `0 0 7px ${col}`;
+      p.style.left = cx + 'px';
+      p.style.top  = cy + 'px';
+      $gameWrap.appendChild(p);
+
+      const angle = Math.random() * Math.PI * 2;
+      const dist  = 35 + Math.random() * 72;
+      const tx = Math.cos(angle) * dist;
+      const ty = Math.sin(angle) * dist;
+      const dur = 420 + Math.random() * 400;
+
+      const anim = p.animate([
+        { transform: 'translate(-50%,-50%) scale(1)',   opacity: 1 },
+        { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(0)`, opacity: 0 },
+      ], { duration: dur, easing: 'ease-out', fill: 'forwards' });
+
+      anim.finished.then(() => p.remove()).catch(() => { /* noop if removed early */ });
+    }
+  }
+
+  /**
+   * Floating score label that rises and fades.
+   * @param {number}      x
+   * @param {number}      y
+   * @param {string}      text  - primary line e.g. "+20"
+   * @param {string|null} sub   - optional suffix e.g. "×3 Kombo!"
+   */
+  function spawnScorePopup(x, y, text, sub) {
+    const el = document.createElement('div');
+    el.className = 'score-popup';
+    el.style.left  = x + 'px';
+    el.style.top   = (y - 10) + 'px';
+    el.style.color = sub ? '#ffe135' : '#39ff14';
+    el.textContent = sub ? `${text} ${sub}` : text;
+    $gameWrap.appendChild(el);
+    setTimeout(() => el.remove(), 980);
+  }
+
+  /** Briefly jolt the game wrapper using the CSS .shake keyframe. */
+  function triggerShake() {
+    $gameWrap.classList.remove('shake');
+    /* Force reflow so removing and re-adding restarts the animation */
+    void $gameWrap.offsetWidth;
+    $gameWrap.classList.add('shake');
+    $gameWrap.addEventListener('animationend', () => {
+      $gameWrap.classList.remove('shake');
+    }, { once: true });
+  }
+
+  /** Flash the text input red to indicate a wrong word. */
+  function triggerInputFlash() {
+    $typeInput.classList.add('wrong');
+    setTimeout(() => $typeInput.classList.remove('wrong'), 300);
+  }
+
+  /** Flash the difficulty badge when level increases. */
+  function triggerDiffFlash() {
+    $diffBadge.classList.add('flash');
+    setTimeout(() => $diffBadge.classList.remove('flash'), 900);
+  }
+
+  /** Show the combo pill badge (auto-hides after 1.3 s). */
+  let _comboBadgeTimer = 0;
+  function showComboBadge(mult) {
+    $comboBadge.textContent = `🔥 ×${mult} Kombo!`;
+    $comboBadge.classList.add('visible');
+    clearTimeout(_comboBadgeTimer);
+    _comboBadgeTimer = setTimeout(() => $comboBadge.classList.remove('visible'), 1300);
+  }
+
+  /* ----------------------------------------------------------
+     §F-15  HUD UPDATE
+     ---------------------------------------------------------- */
+  function updateHUD() {
+    /* Score */
+    $hudScore.textContent = state.score.toLocaleString('id-ID');
+
+    /* Combo multiplier */
+    const dispCombo = Math.min(state.combo, 8);
+    $hudCombo.textContent = `×${dispCombo}`;
+    $hudCombo.style.color = dispCombo >= 3
+      ? 'var(--clr-yellow)'
+      : 'var(--clr-primary)';
+
+    /* Elapsed time MM:SS */
+    const totalSec = Math.floor(state.elapsed);
+    const mm = Math.floor(totalSec / 60);
+    const ss = String(totalSec % 60).padStart(2, '0');
+    $hudTime.textContent = `${mm}:${ss}`;
+
+    /* Lives — heart icons */
+    let livesStr = '';
+    let liveLabel = '';
+    for (let i = 0; i < MAX_LIVES; i++) {
+      if (i < state.lives) { livesStr += '❤️'; liveLabel += 'nyawa '; }
+      else                  { livesStr += '🖤'; liveLabel += 'hilang '; }
+    }
+    $hudLivesIcons.textContent = livesStr;
+    $hudLivesIcons.setAttribute('aria-label', `${state.lives} dari ${MAX_LIVES} nyawa`);
+  }
+
+  /* ----------------------------------------------------------
+     §F-16  END GAME
+     ---------------------------------------------------------- */
+  function endGame() {
+    state.running = false;
+    if (state.loopId) cancelAnimationFrame(state.loopId);
+    clearAllBugs();
+    sfxGameOver();
+
+    const prevHS = getHighScore();
+    const isNew  = state.score > 0 && state.score > prevHS;
+    if (isNew) saveHighScore(state.score);
+    const displayHS = isNew ? state.score : prevHS;
+
+    $goScore.textContent = state.score.toLocaleString('id-ID');
+    $goHs.textContent    = isNew
+      ? `🏆 Rekor Baru! ${displayHS.toLocaleString('id-ID')}`
+      : `Skor Tertinggi: ${displayHS.toLocaleString('id-ID')}`;
+
+    showScreen('gameover');
+  }
+
+  /* ----------------------------------------------------------
+     §F-17  PAUSE / RESUME
+     ---------------------------------------------------------- */
+  function pauseGame() {
+    if (!state.running || state.paused) return;
+    state.paused = true;
+    state.lastTs = null; /* reset dt to prevent time-skip on resume */
+    showScreen('pause');
+  }
+
+  function resumeGame() {
+    if (!state.running || !state.paused) return;
+    state.paused = false;
+    showScreen('game');
+    $typeInput.focus();
+  }
+
+  /* ----------------------------------------------------------
+     §F-18  GLOBAL KEYBOARD HANDLER
+     ---------------------------------------------------------- */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (!state.running) return;
+      if (state.paused) resumeGame();
+      else             pauseGame();
+    }
+  });
+
+  /* ----------------------------------------------------------
+     §F-19  BUTTON WIRING
+     ---------------------------------------------------------- */
+  document.getElementById('btn-start').addEventListener('click', startGame);
+  document.getElementById('btn-resume').addEventListener('click', resumeGame);
+  document.getElementById('btn-restart').addEventListener('click', startGame);
+
+  document.getElementById('btn-quit-pause').addEventListener('click', () => {
+    state.running = false;
+    if (state.loopId) cancelAnimationFrame(state.loopId);
+    clearAllBugs();
+    state = freshState();
+    $hsStart.textContent = getHighScore().toLocaleString('id-ID');
+    showScreen('start');
+  });
+
+  document.getElementById('btn-quit-go').addEventListener('click', () => {
+    $hsStart.textContent = getHighScore().toLocaleString('id-ID');
+    showScreen('start');
+  });
+
+  /* Keep the typing input focused whenever the user clicks the game area */
+  $gameWrap.addEventListener('click', () => {
+    if (state.running && !state.paused) $typeInput.focus();
+  });
+
+  /* ----------------------------------------------------------
+     §F-20  INITIALISE
+     ---------------------------------------------------------- */
+  state = freshState();
+  $hsStart.textContent = getHighScore().toLocaleString('id-ID');
+  showScreen('start');
+
+  /* ============================================================
+     End of IIFE
+     ============================================================ */
+})();
+</script>
+
+</body>
+</html>

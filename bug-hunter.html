@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bug Hunter — IBM AI Builders Challenge</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --border: #1e3a5f;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --danger: #ef4444;
+    --success: #22c55e;
+    --warn: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --mono: 'Courier New', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── SCREENS ─────────────────────────────────────────────── */
+  .screen {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px;
+    z-index: 100;
+  }
+  .screen.hidden { display: none; }
+
+  /* Start screen */
+  #screen-start { background: var(--bg); }
+  .game-title {
+    font-size: clamp(2.4rem, 6vw, 4rem);
+    font-weight: 900;
+    letter-spacing: .08em;
+    color: var(--accent);
+    text-shadow: 0 0 30px var(--accent);
+    text-align: center;
+  }
+  .game-subtitle {
+    color: var(--muted); font-size: .95rem; letter-spacing: .15em;
+    text-transform: uppercase; text-align: center;
+  }
+  .bug-deco {
+    font-size: 3.5rem;
+    animation: float 2.4s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-14px); }
+  }
+  .instructions {
+    max-width: 480px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 28px;
+    font-size: .82rem;
+    line-height: 1.8;
+    color: var(--muted);
+    text-align: left;
+  }
+  .instructions b { color: var(--text); }
+  .btn {
+    padding: 14px 48px;
+    font-family: var(--mono);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    border: 2px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .15s, color .15s, box-shadow .15s;
+  }
+  .btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 0 24px var(--accent);
+  }
+  .btn-danger {
+    border-color: var(--danger); color: var(--danger);
+  }
+  .btn-danger:hover {
+    background: var(--danger); color: #fff;
+    box-shadow: 0 0 24px var(--danger);
+  }
+  .highscore-display {
+    font-size: .85rem; color: var(--muted);
+  }
+  .highscore-display span { color: var(--warn); font-weight: 700; }
+
+  /* Pause screen */
+  #screen-pause { background: rgba(10,14,26,.88); backdrop-filter: blur(6px); }
+  #screen-pause h2 { font-size: 2.2rem; color: var(--warn); letter-spacing: .1em; }
+
+  /* Game-over screen */
+  #screen-gameover { background: rgba(10,14,26,.92); backdrop-filter: blur(8px); }
+  #screen-gameover h2 { font-size: 2.4rem; color: var(--danger); letter-spacing: .1em; }
+  .score-block {
+    text-align: center; line-height: 2;
+  }
+  .score-block .label { color: var(--muted); font-size: .82rem; }
+  .score-block .value { font-size: 2rem; font-weight: 900; color: var(--accent); }
+  .score-block .hs    { font-size: .95rem; color: var(--warn); }
+
+  /* ── GAME CANVAS AREA ────────────────────────────────────── */
+  #game-wrap {
+    position: fixed; inset: 0;
+    overflow: hidden;
+  }
+  #game-wrap.shake {
+    animation: shake .4s cubic-bezier(.36,.07,.19,.97);
+  }
+  @keyframes shake {
+    10%,90%  { transform: translate(-2px, 1px); }
+    20%,80%  { transform: translate(3px, -2px); }
+    30%,50%,70% { transform: translate(-4px, 2px); }
+    40%,60%  { transform: translate(4px, -1px); }
+    100%     { transform: translate(0,0); }
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 52px;
+    display: flex; align-items: center;
+    padding: 0 20px;
+    background: rgba(17,24,39,.9);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+    gap: 28px;
+  }
+  .hud-item { display: flex; flex-direction: column; align-items: flex-start; }
+  .hud-label { font-size: .62rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; }
+  .hud-value { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+  #hud-lives { margin-left: auto; }
+  .life-icon { color: var(--danger); font-size: 1.1rem; }
+  .life-icon.lost { color: var(--muted); }
+  .combo-badge {
+    font-size: .75rem; padding: 2px 8px;
+    background: var(--accent2); color: #fff;
+    border-radius: 999px; font-weight: 700;
+    display: none;
+  }
+  .combo-badge.visible { display: inline-block; }
+
+  /* Production server bar */
+  #prod-bar {
+    position: absolute; bottom: 56px; left: 0; right: 0;
+    height: 32px;
+    background: rgba(239,68,68,.12);
+    border-top: 2px solid var(--danger);
+    display: flex; align-items: center; padding: 0 16px;
+    z-index: 5;
+  }
+  #prod-bar span {
+    font-size: .7rem; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--danger);
+    opacity: .8;
+  }
+
+  /* Input area */
+  #input-area {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 56px;
+    display: flex; align-items: center; padding: 0 16px; gap: 10px;
+    background: rgba(17,24,39,.95);
+    border-top: 1px solid var(--border);
+    z-index: 10;
+  }
+  #input-area label { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+  #type-input {
+    flex: 1;
+    background: transparent;
+    border: none; border-bottom: 2px solid var(--border);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 1.1rem;
+    outline: none;
+    padding: 4px 0;
+    caret-color: var(--accent);
+    text-transform: uppercase;
+  }
+  #type-input::placeholder { color: var(--muted); opacity: .5; }
+
+  /* Bugs */
+  .bug-entity {
+    position: absolute;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px;
+    pointer-events: none;
+    transition: none;
+  }
+  .bug-emoji { font-size: 1.8rem; line-height: 1; }
+  .bug-word {
+    font-family: var(--mono);
+    font-size: .8rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .bug-word.matched { color: var(--success); border-color: var(--success); }
+
+  /* Difficulty badge */
+  #diff-badge {
+    position: absolute; top: 60px; right: 16px;
+    font-size: .65rem; padding: 2px 10px;
+    background: rgba(124,58,237,.25);
+    border: 1px solid var(--accent2);
+    border-radius: 999px; color: var(--accent2);
+    letter-spacing: .1em; text-transform: uppercase;
+    z-index: 10;
+  }
+
+  /* Particles */
+  .particle {
+    position: absolute;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  /* Floating score popup */
+  .score-popup {
+    position: absolute;
+    font-family: var(--mono);
+    font-weight: 900;
+    font-size: 1rem;
+    pointer-events: none;
+    z-index: 25;
+    text-shadow: 0 0 8px currentColor;
+    animation: popup-rise 1s ease forwards;
+  }
+  @keyframes popup-rise {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    80%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-55px) scale(.7); }
+  }
+
+  /* Scanline overlay */
+  #scanlines {
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0,0,0,.08) 3px,
+      rgba(0,0,0,.08) 4px
+    );
+    pointer-events: none;
+    z-index: 200;
+    opacity: .35;
+  }
+</style>
+</head>
+<body>
+
+<!-- scanlines -->
+<div id="scanlines"></div>
+
+<!-- ── START SCREEN ──────────────────────────────────────── -->
+<div class="screen" id="screen-start">
+  <div class="bug-deco">🐛</div>
+  <div class="game-title">BUG HUNTER</div>
+  <div class="game-subtitle">IBM AI Builders Challenge — IT Track</div>
+  <div class="instructions">
+    <b>Cara Bermain:</b><br>
+    Bug beserta nama error jatuh dari atas.<br>
+    Ketik kata yang tertera dan tekan <b>Spasi / Enter</b> untuk menghancurkannya.<br>
+    Jangan biarkan bug mencapai <b style="color:#ef4444">PRODUCTION SERVER</b>!<br><br>
+    🐞 Tebak tepat → poin + kombo multiplier<br>
+    💥 Bug lolos → −1 nyawa + layar goyang<br>
+    ⏫ Kesulitan naik setiap <b>30 detik</b>
+  </div>
+  <div class="highscore-display">Skor Tertinggi: <span id="hs-start">0</span></div>
+  <button class="btn" id="btn-start">▶ MULAI BERMAIN</button>
+</div>
+
+<!-- ── PAUSE SCREEN ──────────────────────────────────────── -->
+<div class="screen hidden" id="screen-pause">
+  <h2>⏸ JEDA</h2>
+  <p style="color:var(--muted);font-size:.88rem">Tekan <b style="color:var(--text)">ESC</b> untuk melanjutkan</p>
+  <button class="btn" id="btn-resume">▶ LANJUTKAN</button>
+  <button class="btn btn-danger" id="btn-quit-pause">✕ KELUAR</button>
+</div>
+
+<!-- ── GAME OVER SCREEN ──────────────────────────────────── -->
+<div class="screen hidden" id="screen-gameover">
+  <h2>💀 GAME OVER</h2>
+  <div class="score-block">
+    <div class="label">SKOR AKHIR</div>
+    <div class="value" id="go-score">0</div>
+    <div class="hs" id="go-hs"></div>
+  </div>
+  <button class="btn" id="btn-restart">🔄 MAIN LAGI</button>
+  <button class="btn btn-danger" id="btn-quit-go">🏠 MENU UTAMA</button>
+</div>
+
+<!-- ── GAME AREA ─────────────────────────────────────────── -->
+<div id="game-wrap" class="hidden">
+  <div id="hud">
+    <div class="hud-item">
+      <span class="hud-label">Skor</span>
+      <span class="hud-value" id="hud-score">0</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Kombo</span>
+      <span class="hud-value" id="hud-combo">x1</span>
+    </div>
+    <span class="combo-badge" id="combo-badge">KOMBO!</span>
+    <div class="hud-item">
+      <span class="hud-label">Waktu</span>
+      <span class="hud-value" id="hud-time">0:00</span>
+    </div>
+    <div class="hud-item" id="hud-lives">
+      <span class="hud-label">Nyawa</span>
+      <span class="hud-value" id="hud-lives-icons">❤️❤️❤️</span>
+    </div>
+  </div>
+
+  <div id="diff-badge">Level 1</div>
+
+  <!-- bugs render here -->
+
+  <div id="prod-bar"><span>⚡ Production Server — Jangan Sampai Bobol! ⚡</span></div>
+
+  <div id="input-area">
+    <label for="type-input">[ KETIK ] ›</label>
+    <input id="type-input" type="text" autocomplete="off" spellcheck="false"
+           placeholder="ketik nama bug...">
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── AUDIO ─────────────────────────────────────────── */
+  const AC = new (window.AudioContext || window.webkitAudioContext)();
+
+  function resumeAC() { if (AC.state === 'suspended') AC.resume(); }
+
+  function playTone(freq, type, duration, vol, detune) {
+    resumeAC();
+    const osc = AC.createOscillator();
+    const gain = AC.createGain();
+    osc.connect(gain); gain.connect(AC.destination);
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, AC.currentTime);
+    if (detune) osc.detune.setValueAtTime(detune, AC.currentTime);
+    gain.gain.setValueAtTime(vol || .18, AC.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + duration);
+    osc.start(AC.currentTime);
+    osc.stop(AC.currentTime + duration);
+  }
+
+  function sfxType()   { playTone(880, 'sine',    .05, .08); }
+  function sfxKill() {
+    playTone(600, 'sawtooth', .08, .15);
+    setTimeout(() => playTone(900, 'sine', .1, .12), 50);
+    setTimeout(() => playTone(1200,'sine', .12,.1), 110);
+  }
+  function sfxCombo() {
+    [440,550,660,880].forEach((f,i) =>
+      setTimeout(() => playTone(f,'sine',.14,.14), i*55));
+  }
+  function sfxLose() {
+    playTone(300,'sawtooth',.18,.2);
+    setTimeout(() => playTone(200,'sawtooth',.25,.18), 100);
+    setTimeout(() => playTone(100,'sawtooth',.35,.15), 220);
+  }
+  function sfxGameOver() {
+    [220,196,174,146].forEach((f,i) =>
+      setTimeout(() => playTone(f,'square',.3,.2), i*120));
+  }
+  function sfxLevelUp() {
+    [523,659,784,1046].forEach((f,i) =>
+      setTimeout(() => playTone(f,'triangle',.18,.15), i*80));
+  }
+
+  /* ── CONSTANTS ─────────────────────────────────────── */
+  const BUG_WORDS = [
+    'NULLPOINTER','SYNTAXERROR','SEGFAULT','TIMEOUT',
+    '404','STACKOVERFLOW','DEADLOCK','OVERFLOW',
+    'UNDEFINED','TYPEERROR','REFERENCEERROR','RANGEERROR',
+    'CORS','HEAPDUMP','MEMLEAK','PANIC',
+    'RACECONDITION','BADINPUT','OUTOFMEMORY','FORBIDDEN',
+  ];
+  const BUG_EMOJIS = ['🐛','🐞','🦗','🕷️','🦟','💀','👾','🔴'];
+  const MAX_LIVES  = 3;
+  const DIFF_INTERVAL = 30; // seconds
+
+  /* ── STATE ─────────────────────────────────────────── */
+  let state = {};
+
+  function freshState() {
+    return {
+      running:   false,
+      paused:    false,
+      score:     0,
+      lives:     MAX_LIVES,
+      combo:     0,
+      elapsed:   0,       // seconds
+      level:     1,
+      bugs:      [],      // { id, word, emoji, x, y, speed, el, wordEl }
+      nextId:    0,
+      spawnTimer: 0,
+      diffTimer:  0,
+      lastTs:    null,
+      loopId:    null,
+      spawnInterval: 2800, // ms
+      bugSpeed:      40,   // px/s at start
+    };
+  }
+
+  /* ── DOM REFS ──────────────────────────────────────── */
+  const $start    = document.getElementById('screen-start');
+  const $pause    = document.getElementById('screen-pause');
+  const $gameover = document.getElementById('screen-gameover');
+  const $game     = document.getElementById('game-wrap');
+  const $input    = document.getElementById('type-input');
+  const $hudScore = document.getElementById('hud-score');
+  const $hudCombo = document.getElementById('hud-combo');
+  const $hudTime  = document.getElementById('hud-time');
+  const $hudLives = document.getElementById('hud-lives-icons');
+  const $comboBadge = document.getElementById('combo-badge');
+  const $diffBadge  = document.getElementById('diff-badge');
+  const $hsStart  = document.getElementById('hs-start');
+  const $goScore  = document.getElementById('go-score');
+  const $goHs     = document.getElementById('go-hs');
+
+  /* ── HIGH SCORE ────────────────────────────────────── */
+  function getHS() { return parseInt(localStorage.getItem('bh_hs') || '0', 10); }
+  function setHS(v) { localStorage.setItem('bh_hs', v); }
+
+  /* ── SCREENS ───────────────────────────────────────── */
+  function showScreen(name) {
+    [$start,$pause,$gameover,$game].forEach(el => el.classList.add('hidden'));
+    if (name === 'start')    { $start.classList.remove('hidden'); }
+    if (name === 'pause')    { $pause.classList.remove('hidden'); }
+    if (name === 'gameover') { $gameover.classList.remove('hidden'); }
+    if (name === 'game')     { $game.classList.remove('hidden'); }
+  }
+
+  /* ── GAME START / RESTART ──────────────────────────── */
+  function startGame() {
+    resumeAC();
+    clearBugs();
+    state = freshState();
+    state.running = true;
+    updateHUD();
+    showScreen('game');
+    $input.value = '';
+    $input.focus();
+    requestAnimationFrame(loop);
+  }
+
+  /* ── MAIN LOOP ─────────────────────────────────────── */
+  function loop(ts) {
+    if (!state.running) return;
+    if (state.paused)   { state.loopId = requestAnimationFrame(loop); return; }
+
+    const dt = state.lastTs ? Math.min((ts - state.lastTs) / 1000, .1) : 0;
+    state.lastTs    = ts;
+    state.elapsed  += dt;
+    state.spawnTimer += dt * 1000;
+    state.diffTimer  += dt * 1000;
+
+    // difficulty ramp
+    if (state.diffTimer >= DIFF_INTERVAL * 1000) {
+      state.diffTimer = 0;
+      state.level++;
+      state.bugSpeed      = 40 + (state.level - 1) * 14;
+      state.spawnInterval = Math.max(900, 2800 - (state.level - 1) * 320);
+      $diffBadge.textContent = `Level ${state.level}`;
+      sfxLevelUp();
+      flashDiffBadge();
+    }
+
+    // spawn
+    if (state.spawnTimer >= state.spawnInterval) {
+      state.spawnTimer = 0;
+      spawnBug();
+    }
+
+    // move bugs
+    const gameH   = $game.clientHeight;
+    const prodBarY = gameH - 56 - 32; // bottom of prod bar top edge
+    const hudH    = 52;
+
+    for (let i = state.bugs.length - 1; i >= 0; i--) {
+      const bug = state.bugs[i];
+      bug.y += bug.speed * dt;
+      bug.el.style.transform = `translate(${bug.x}px, ${bug.y}px)`;
+
+      // hit production server
+      if (bug.y + 60 >= prodBarY) {
+        hitBottom(bug);
+        removeBug(i);
+      }
+    }
+
+    updateHUD();
+    state.loopId = requestAnimationFrame(loop);
+  }
+
+  /* ── SPAWN ─────────────────────────────────────────── */
+  function spawnBug() {
+    const word  = BUG_WORDS[Math.floor(Math.random() * BUG_WORDS.length)];
+    const emoji = BUG_EMOJIS[Math.floor(Math.random() * BUG_EMOJIS.length)];
+    const gameW = $game.clientWidth;
+    const margin = 90;
+    const x = margin + Math.random() * (gameW - margin * 2);
+
+    // Create DOM element
+    const el = document.createElement('div');
+    el.className = 'bug-entity';
+    el.style.top  = '0px';
+    el.style.left = '0px';
+    el.style.willChange = 'transform';
+
+    const emojiEl = document.createElement('div');
+    emojiEl.className = 'bug-emoji';
+    emojiEl.textContent = emoji;
+
+    const wordEl = document.createElement('div');
+    wordEl.className = 'bug-word';
+    // random color accent
+    const colors = ['#00d4ff','#f59e0b','#a78bfa','#34d399','#fb7185'];
+    const col = colors[Math.floor(Math.random() * colors.length)];
+    wordEl.style.color = col;
+    wordEl.style.borderColor = col;
+    wordEl.textContent = word;
+
+    el.appendChild(emojiEl);
+    el.appendChild(wordEl);
+    $game.appendChild(el);
+
+    const bug = {
+      id: state.nextId++,
+      word, emoji, x,
+      y: 52,
+      speed: state.bugSpeed + (Math.random() - .5) * 10,
+      el, wordEl,
+    };
+    bug.el.style.transform = `translate(${bug.x}px, ${bug.y}px)`;
+    state.bugs.push(bug);
+  }
+
+  /* ── REMOVE / CLEAR ────────────────────────────────── */
+  function removeBug(index) {
+    const bug = state.bugs[index];
+    if (bug.el.parentNode) bug.el.parentNode.removeChild(bug.el);
+    state.bugs.splice(index, 1);
+  }
+
+  function clearBugs() {
+    state.bugs && state.bugs.forEach(b => {
+      if (b.el && b.el.parentNode) b.el.parentNode.removeChild(b.el);
+    });
+  }
+
+  /* ── HIT BOTTOM ────────────────────────────────────── */
+  function hitBottom(bug) {
+    state.lives--;
+    state.combo = 0;
+    sfxLose();
+    shakeScreen();
+    updateHUD();
+    if (state.lives <= 0) {
+      state.lives = 0;
+      endGame();
+    }
+  }
+
+  /* ── KILL BUG (player typed correctly) ─────────────── */
+  function killBug(bug, index) {
+    state.combo++;
+    const mult = Math.min(state.combo, 8);
+    const pts  = 10 * mult;
+    state.score += pts;
+
+    // particles
+    const cx = bug.x + 20;
+    const cy = bug.y + 20;
+    spawnParticles(cx, cy);
+    spawnScorePopup(cx, cy, `+${pts}`, mult > 1 ? `x${mult} KOMBO!` : null);
+
+    if (mult >= 3) { sfxCombo(); showComboBadge(mult); }
+    else           { sfxKill(); }
+
+    removeBug(index);
+    updateHUD();
+  }
+
+  /* ── INPUT ─────────────────────────────────────────── */
+  $input.addEventListener('input', () => {
+    if (!state.running || state.paused) return;
+    sfxType();
+    const val = $input.value.trim().toUpperCase();
+
+    // highlight matching bugs
+    state.bugs.forEach(b => {
+      if (val && b.word.startsWith(val)) {
+        b.wordEl.classList.add('matched');
+      } else {
+        b.wordEl.classList.remove('matched');
+      }
+    });
+  });
+
+  $input.addEventListener('keydown', e => {
+    if (!state.running || state.paused) return;
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      submitWord();
+    }
+  });
+
+  function submitWord() {
+    const val = $input.value.trim().toUpperCase();
+    if (!val) return;
+    $input.value = '';
+
+    // clear all highlights
+    state.bugs.forEach(b => b.wordEl.classList.remove('matched'));
+
+    // find exact match (closest to bottom first)
+    let bestIdx = -1;
+    let bestY   = -Infinity;
+    state.bugs.forEach((b, i) => {
+      if (b.word === val && b.y > bestY) {
+        bestY = b.y; bestIdx = i;
+      }
+    });
+
+    if (bestIdx !== -1) {
+      killBug(state.bugs[bestIdx], bestIdx);
+    } else {
+      // wrong — reset combo
+      state.combo = 0;
+      updateHUD();
+      flashInput();
+    }
+  }
+
+  /* ── EFFECTS ───────────────────────────────────────── */
+  function spawnParticles(cx, cy) {
+    const colors = ['#00d4ff','#22c55e','#f59e0b','#a78bfa','#fb7185','#fff'];
+    for (let i = 0; i < 18; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      const col = colors[Math.floor(Math.random() * colors.length)];
+      p.style.background = col;
+      p.style.boxShadow  = `0 0 6px ${col}`;
+      p.style.left = cx + 'px';
+      p.style.top  = cy + 'px';
+      $game.appendChild(p);
+
+      const angle = Math.random() * Math.PI * 2;
+      const dist  = 30 + Math.random() * 70;
+      const tx = Math.cos(angle) * dist;
+      const ty = Math.sin(angle) * dist;
+      const dur = 400 + Math.random() * 400;
+
+      p.animate([
+        { transform: 'translate(-50%,-50%) scale(1)',   opacity: 1 },
+        { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(0)`, opacity: 0 },
+      ], { duration: dur, easing: 'ease-out', fill: 'forwards' })
+        .finished.then(() => p.remove());
+    }
+  }
+
+  function spawnScorePopup(x, y, text, sub) {
+    const el = document.createElement('div');
+    el.className = 'score-popup';
+    el.style.left  = x + 'px';
+    el.style.top   = (y - 10) + 'px';
+    el.style.color = sub ? '#f59e0b' : '#00d4ff';
+    el.textContent = sub ? `${text} ${sub}` : text;
+    $game.appendChild(el);
+    setTimeout(() => el.remove(), 1000);
+  }
+
+  function shakeScreen() {
+    $game.classList.remove('shake');
+    void $game.offsetWidth;
+    $game.classList.add('shake');
+    $game.addEventListener('animationend', () => $game.classList.remove('shake'), { once: true });
+  }
+
+  function flashInput() {
+    $input.style.borderBottomColor = 'var(--danger)';
+    $input.style.color = 'var(--danger)';
+    setTimeout(() => {
+      $input.style.borderBottomColor = '';
+      $input.style.color = '';
+    }, 300);
+  }
+
+  function showComboBadge(mult) {
+    $comboBadge.textContent = `🔥 x${mult} KOMBO!`;
+    $comboBadge.classList.add('visible');
+    clearTimeout($comboBadge._t);
+    $comboBadge._t = setTimeout(() => $comboBadge.classList.remove('visible'), 1200);
+  }
+
+  function flashDiffBadge() {
+    $diffBadge.style.background = 'rgba(124,58,237,.7)';
+    $diffBadge.style.color = '#fff';
+    setTimeout(() => {
+      $diffBadge.style.background = '';
+      $diffBadge.style.color = '';
+    }, 800);
+  }
+
+  /* ── HUD UPDATE ────────────────────────────────────── */
+  function updateHUD() {
+    $hudScore.textContent = state.score.toLocaleString('id-ID');
+    $hudCombo.textContent = `x${Math.min(state.combo, 8)}`;
+    // time
+    const s = Math.floor(state.elapsed);
+    const mm = String(Math.floor(s / 60)).padStart(1,'0');
+    const ss = String(s % 60).padStart(2,'0');
+    $hudTime.textContent = `${mm}:${ss}`;
+    // lives
+    let lStr = '';
+    for (let i = 0; i < MAX_LIVES; i++) {
+      lStr += i < state.lives ? '❤️' : '🖤';
+    }
+    $hudLives.textContent = lStr;
+  }
+
+  /* ── END GAME ──────────────────────────────────────── */
+  function endGame() {
+    state.running = false;
+    if (state.loopId) cancelAnimationFrame(state.loopId);
+    clearBugs();
+    sfxGameOver();
+
+    const hs = getHS();
+    if (state.score > hs) setHS(state.score);
+    const newHs = getHS();
+
+    $goScore.textContent = state.score.toLocaleString('id-ID');
+    $goHs.textContent    = state.score >= hs && state.score > 0
+      ? `🏆 Rekor Baru! ${newHs.toLocaleString('id-ID')}`
+      : `Skor Tertinggi: ${newHs.toLocaleString('id-ID')}`;
+
+    showScreen('gameover');
+  }
+
+  /* ── PAUSE / RESUME ────────────────────────────────── */
+  function pauseGame() {
+    if (!state.running || state.paused) return;
+    state.paused = true;
+    state.lastTs = null;
+    showScreen('pause');
+    // keep game-wrap visible beneath
+    $game.classList.remove('hidden');
+  }
+
+  function resumeGame() {
+    if (!state.running || !state.paused) return;
+    state.paused = false;
+    showScreen('game');
+    $input.focus();
+  }
+
+  /* ── KEYBOARD ──────────────────────────────────────── */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (!state.running) return;
+      if (state.paused) resumeGame();
+      else             pauseGame();
+    }
+  });
+
+  /* ── BUTTON WIRING ─────────────────────────────────── */
+  document.getElementById('btn-start').addEventListener('click', startGame);
+  document.getElementById('btn-resume').addEventListener('click', resumeGame);
+  document.getElementById('btn-restart').addEventListener('click', startGame);
+  document.getElementById('btn-quit-pause').addEventListener('click', () => {
+    state.running = false;
+    if (state.loopId) cancelAnimationFrame(state.loopId);
+    clearBugs();
+    state = freshState();
+    $hsStart.textContent = getHS().toLocaleString('id-ID');
+    showScreen('start');
+  });
+  document.getElementById('btn-quit-go').addEventListener('click', () => {
+    $hsStart.textContent = getHS().toLocaleString('id-ID');
+    showScreen('start');
+  });
+
+  /* ── INIT ──────────────────────────────────────────── */
+  state = freshState();
+  $hsStart.textContent = getHS().toLocaleString('id-ID');
+  showScreen('start');
+
+  // keep input focused while game is running
+  document.addEventListener('click', () => {
+    if (state.running && !state.paused) $input.focus();
+  });
+})();
+</script>
+</body>
+</html>
